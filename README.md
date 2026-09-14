@@ -16,8 +16,11 @@ DeepSeek-V4.1-Flash：**PP4 流水线 + shadow KV + EXL3 2bpw 量化 + DSpark �
 | KV 池 | **590 万 token**（524k 窗口 11.25 路并发） |
 | 启动 | ~7.5 min（TileLang 持久缓存后） |
 
-单卡 64GB×4 = 256GB 装不下 510GB 的原版 —— 路线是 **EXL3 2bpw（334GB）+
-engram 表钉 189GiB 宿主内存（UVA）+ 压缩 KV fp8**。
+单卡 64GB×4 = 256GB 装不下 510GB 的原版 —— 路线是 **EXL3 2bpw + 压缩 KV fp8**。
+
+权重包 334GiB 的构成（为什么 2bpw 不是 191GB）：矩阵参数 ~567B × 2bit ≈ 145GB
+（等效 1.96bpw），**engram 检索表 197B 保持 FP8 = 203GB** —— 它是 n-gram 哈希查找
+表不是 matmul，量化即毁检索，必须原样保留并钉 189GiB 宿主内存（UVA）。
 
 ## 硬件要求
 
