@@ -36,7 +36,8 @@ git clone https://github.com/zebgop-ops/dsv41reap-pp.git
 #    把 overlay/vllm/ 下全部 54 个 .py 拷进镜像的
 #    /usr/local/lib/python3.12/dist-packages/vllm/ 对应路径
 #    把 overlay/hybrid/ 拷进 site-packages/ (PYTHONPATH 不进 worker 进程, 必须落包)
-#    还需要 v19-lineage 的 vllm/models/deepseek_v4_1/ampere/ (SM8x sparse attention)
+#    ampere/ (SM8x sparse attention) 从 wtdcode/vllm-backport 的镜像或源码树取:
+#    vllm/models/deepseek_v4_1/ampere/ 整目录拷入 (只依赖 amd/rocm + platforms 接口)
 
 # 3) 4 个补丁 (本 repo patches/, 全部幂等, 按序打):
 python3 patches/pp_relay_img_ids.py  <vllm>/models/deepseek_v4_1/nvidia/model.py
