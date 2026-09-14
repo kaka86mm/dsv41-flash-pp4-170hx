@@ -46,7 +46,8 @@ git clone https://github.com/zebgop-ops/dsv41reap-pp.git
 python3 patches/pp_relay_img_ids.py  <vllm>/models/deepseek_v4_1/nvidia/model.py
 python3 patches/engram_sm80_fp8.py   <vllm>/models/deepseek_v4_1/common/engram.py
 python3 patches/moe_cand_key_fix.py  <vllm>/v1/worker/gpu/model_runner.py
-python3 patches/plugin_v150_shim.py  <vllm_exl3>/exl3.py        # exllamav3 v1.5.0 用
+python3 patches/plugin_v150_shim.py  <vllm_exl3>/exl3.py        # 仅旧版 vllm-exl3 (pre 94c29ba) + exllamav3 v1.5.0 用
+#    ↑ 上游 PR #22 (94c29ba 起) 已官方支持 v1.5.0 arity — 新插件无需此补丁
 
 # 4) 插件 + 内核: vllm-exl3 (AGPL-3.0) + exllamav3 v1.5.0 ext
 #    exllamav3_ext 用容器内 nvcc 编 (TORCH_CUDA_ARCH_LIST=8.0);
