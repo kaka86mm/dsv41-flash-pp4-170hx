@@ -16,6 +16,20 @@ DeepSeek-V4.1-Flash：**PP4 流水线 + shadow KV + EXL3 2bpw 量化 + DSpark �
 | KV 池 | **590 万 token**（524k 窗口 11.25 路并发） |
 | 启动 | ~7.5 min（TileLang 持久缓存后） |
 
+### 2026-09-28 更新（v37：+ `GLOO_SOCKET_IFNAME=lo`，exllamav3 v1.5.3）
+
+长上下文 decode 崩塌定位为 **PP gloo 控制面走 docker bridge（535ms/发）**，
+一行 env 修复，全链路重测（详见 FINDINGS.md §7）：
+
+| 维度 | 数字 |
+|---|---|
+| 单流 decode | 32K 60.7 / 128K 58.3 / 300K 56.7 / **524K 54.7 tok/s**（斜率 -10%，修前 -37%） |
+| 冷 prefill（全异文本） | 32K 2,771 / 128K 3,756 / 300K 3,736 / 524K **4,061 tok/s**（平坦无崩塌） |
+| 并发 decode-only | C8 200.6 / C16 199.4 / C24 **252.1 tok/s**（破 220 平台） |
+| 质量门 | 7/7 + 视觉 2/2（不变） |
+
+上游报告：wtdcode/vllm-backport#111、vllm-project/vllm#59109。
+
 单卡 64GB×4 = 256GB 装不下 510GB 的原版 —— 路线是 **EXL3 2bpw + 压缩 KV fp8**。
 
 权重包 334GiB 的构成（为什么 2bpw 不是 191GB）：矩阵参数 ~567B × 2bit ≈ 145GB
@@ -55,7 +69,7 @@ python3 patches/plugin_v150_shim.py  <vllm_exl3>/exl3.py        # 仅旧版 vllm
 
 # 5) 权重: EXL3 2bpw 转换 (exllamav3 convert.py), docker commit 成自己的镜像
 
-# 6) 启动
+# 6) 启动 (09-28 起自带 GLOO_SOCKET_IFNAME=lo, 缺它长上下文会崩)
 bash serve/launch-pp4.sh
 ```
 
