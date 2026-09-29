@@ -21,6 +21,8 @@ AVAIL=$(free -g | awk '/^Mem:/{print $7}')
 
 mkdir -p $HOME/tilelang-cache   # persistent TileLang JIT cache: 9min → 7.5min startup
 
+# 09-28: GLOO_SOCKET_IFNAME=lo 是硬要求 — PP gloo 控制面走桥接=535ms/发,
+# 表现为长上下文 decode 崩塌 (GPU busy 仅 8-19%), 详见 FINDINGS.md §7
 docker run -d --name $NAME \
   --gpus all --ipc=host \
   --ulimit memlock=-1 --ulimit stack=67108864 \
@@ -32,6 +34,7 @@ docker run -d --name $NAME \
   -e VLLM_PLUGINS=vllm_exl3 \
   -e VLLM_ENGINE_READY_TIMEOUT_S=3600 \
   -e NCCL_CUMEM_ENABLE=0 \
+  -e GLOO_SOCKET_IFNAME=lo \
   -e VLLM_USE_V2_MODEL_RUNNER=0 \
   -e VLLM_PP_LAYER_PARTITION=10,10,11,9 \
   -e PYTHONPATH=/overlay -e TORCH_CUDA_ARCH_LIST="8.0" \
