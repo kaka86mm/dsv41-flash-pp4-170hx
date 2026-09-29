@@ -69,3 +69,54 @@
 - 并发平台 ~220 tok/s = 流水线饱和。下一个杠杆是 exllamav3 v1.5.0 的
   `exl3_moe_coop` 两段式内核（插件仍在旧入口 + 尾参 shim，等上游移植）。
 - prefill 16k=2119 tok/s @ 37% MFU，EXL3 反量化路径的合理值。
+
+## 7. 2026-09-28: gloo 控制面 535ms —— 长上下文崩塌真凶，一行修复（+53%）
+
+**现象**：单流 decode 随上下文崩塌（57.0 → 35.8 tok/s，60K→524K），且全程
+GPU busy 仅 8-19%、EngineCore/RustFrontend/4 个 worker CPU 全部 0-3% ——
+算力全员空闲，纯等待。
+
+**三层排除**（每层都被实测推翻）：
+1. 不是 indexer 打分内核：`_fp8_paged_mqa_logits` 确实线性 O(ctx)
+   （34.5µs@60K → 281µs@524K），但每步仅 ~0.6ms，占步长 0.6%。
+2. 不是 CPU 算力：/proc 逐进程 utime 计量，全栈 <3%。
+3. **是同步等待**：trace `user_annotation gloo:send` 平均 **535ms/发**
+   （~4.7 次/s）。vLLM PP 的 cpu:gloo 组负责 isend_object（每步调度对象 +
+   DSpark 投机反馈），gloo 默认按容器 hostname 解析网卡 → docker bridge
+   (172.17.0.2) 而非 loopback；每次投递往返 ~535ms，payload 随上下文变大
+   （块表/索引），所以表现为"长上下文崩塌"。
+
+**修复**：`-e GLOO_SOCKET_IFNAME=lo`（同容器多 rank 走 loopback）。
+跨机部署别用 lo，应指定内网网卡。
+
+**修复前后（单流，热态，温度 0）**：
+
+| ctx | 修前 | 修后 |
+|---|---|---|
+| 32K | 57.0 | 60.7 |
+| 128K | 46.7 | 58.3 |
+| 300K | ~40 | 56.7 |
+| 524K | 35.8 | **54.7** |
+
+斜率 -37% → **-10%**（16× 上下文）。冷 prefill 同步受益 ~+55%
+（524K TTFT 129s ≈ 4,061 tok/s，全深度平坦 3.7-4K）。
+质量 7/7 + 视觉 2/2 不变；并发 C8 200.6 / C16 199.4 / C24 252.1
+（破 §6 的 220 平台——那个平台一半是 gloo 税撑出来的）。
+
+**附带结论**：
+- 无投机对照 12-16 tok/s 全平 → DSpark 投机是 3.5× 命根不是税；
+  全部上下文敏感度都在投机机器里（= 随 ctx 变大的 gloo payload）。
+- k 档位：k=6 被拒（必须整除 n_predict=5）；k=10 实测 -8~12% 回退。**k=5 最优**。
+- exllamav3 v1.5.3：速度中性 ±2%，收编（修内存泄漏 + 瞬态显存收紧）。
+  v1.5.1 的 "MoE optimizations"（two-stage coop 内核）v1.5.0 已含。
+- **基准卫生新坑（§3 的升级版）**：此栈 prefix cache 按**块内容哈希**匹配，
+  头部 nonce 掐不断命中（同基底文本换头仍 ~95% 命中，TTFT 假快 20×）。
+  诚实冷 prefill 必须每点全异填充文本。
+- decode 速率内容敏感：同为 524K，不同文本 35-56 tok/s（投机接受率波动）。
+
+**修后剩余空间**（新天花板）：步长 ~60ms = 4 rank GPU 串行和 ~40ms +
+同步/launch ~24ms。GPU 时间分布：exl3_moe_coop 34% / marlin 10% /
+稀疏 attn 11-14%。下一杠杆排序：REAP 384→320 专家剪枝（+6-7%，
++1.93% ppl）> async scheduling / FULL cudagraph > 定制 MoE 持久内核。
+
+上游报告：wtdcode/vllm-backport#111、vllm-project/vllm#59109。
